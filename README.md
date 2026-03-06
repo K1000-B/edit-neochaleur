@@ -1,65 +1,86 @@
 # EDIT-NEOCHALEUR
 
-application built with **React + TypeScript + TailwindCSS**.
+A modern, serverless web application built with **React + TypeScript + TailwindCSS**.
 
-This project is designed as a **serverless static website** intended to be deployed on platforms such as:
+## Description
 
-- Cloudflare Pages
-- Netlify
-- Vercel
-- GitHub Pages
+EDIT-NEOCHALEUR is a frontend-only application designed for fast, reliable deployment on serverless platforms. It emphasizes performance, accessibility, and maintainability through a minimal dependency approach and TypeScript type safety.
 
 ## Tech Stack
 
-- React
-- TypeScript
-- Vite
-- Tailwind CSS
-- React Router
+- **React** - UI library
+- **TypeScript** - Type-safe JavaScript
+- **Vite** - Fast build tool and dev server
+- **Tailwind CSS** - Utility-first CSS framework
+- **React Router** - Client-side routing
 
 ## Project Philosophy
 
-The project follows these principles:
+The project follows these core principles:
 
-- **Frontend-only architecture**
-- **Serverless deployment**
-- **Minimal dependencies**
-- **Fast loading performance**
-- **SEO-friendly structure**
-- **Accessible and responsive UI**
+- **Frontend-only architecture** - No backend server required
+- **Serverless deployment** - Deploy directly to edge networks
+- **Minimal dependencies** - Lean, maintainable codebase
+- **Fast loading performance** - Optimized for speed
+- **SEO-friendly structure** - Proper HTML semantics
+- **Accessible and responsive UI** - Works on all devices
 
 ## Project Structure
 
+```
+src/
+├── components/     # Reusable React components
+├── pages/         # Page-level components
+├── App.tsx        # Main application component
+└── index.css      # Global styles
+
+dist/             # Production build output
+```
 
 ## Installation
 
-
 Install dependencies:
+
+```bash
 npm install
+```
 
-Run development server:
+## Development
+
+Run the development server:
+
+```bash
 npm run dev
+```
 
-Build production version:
+The app will be available at `http://localhost:5173`
+
+## Building
+
+Build for production:
+
+```bash
 npm run build
+```
 
-Preview production build:
+Preview the production build locally:
+
+```bash
 npm run preview
+```
 
 ## Deployment
 
 This project can be deployed directly to:
 
-- Cloudflare Pages
-- Netlify
-- Vercel
-- GitHub Pages
+- **Cloudflare Pages**
+- **Netlify**
+- **Vercel**
+- **GitHub Pages**
 
-Build command:
-npm run build
-
-Output directory:
-dist
+**Build settings:**
+- Build command: `npm run build`
+- Output directory: `dist`
 
 ## License
 
