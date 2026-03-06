@@ -81,6 +81,266 @@ const toTs = (value: unknown, indent = 0): string => {
   return 'undefined';
 };
 
+const stripComments = (input: string) => {
+  let output = '';
+  let inString = false;
+  let stringChar = '';
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const char = input[i];
+    const next = input[i + 1];
+
+    if (inLineComment) {
+      if (char === '\n') {
+        inLineComment = false;
+        output += char;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (inString) {
+      output += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === stringChar) {
+        inString = false;
+        stringChar = '';
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      inLineComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      inString = true;
+      stringChar = char;
+      output += char;
+      continue;
+    }
+
+    if (char === '`') {
+      throw new Error('Les templates literals ne sont pas supportés pour l’import.');
+    }
+
+    output += char;
+  }
+
+  return output;
+};
+
+const normalizeTsLiteral = (input: string) => {
+  const cleaned = stripComments(input);
+  let output = '';
+  let inString = false;
+  let stringChar = '';
+  let escaped = false;
+  let prevSig = '';
+
+  const isIdentifierStart = (char: string) => /[A-Za-z_$]/.test(char);
+  const isIdentifierPart = (char: string) => /[A-Za-z0-9_$]/.test(char);
+  const isWhitespace = (char: string) => /\s/.test(char);
+
+  for (let i = 0; i < cleaned.length; i += 1) {
+    const char = cleaned[i];
+
+    if (inString) {
+      if (escaped) {
+        if (stringChar === "'" && char === "'") {
+          output += "'";
+        } else if (char === '"') {
+          output += '\\"';
+        } else if (char === '\\') {
+          output += '\\\\';
+        } else if ('nrtbfvu'.includes(char)) {
+          output += `\\${char}`;
+        } else {
+          output += char;
+        }
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (char === stringChar) {
+        inString = false;
+        stringChar = '';
+        output += '"';
+        prevSig = '"';
+        continue;
+      }
+
+      if (char === '"') {
+        output += '\\"';
+        continue;
+      }
+
+      output += char;
+      continue;
+    }
+
+    if (char === '`') {
+      throw new Error('Les templates literals ne sont pas supportés pour l’import.');
+    }
+
+    if (char === "'" || char === '"') {
+      inString = true;
+      stringChar = char;
+      output += '"';
+      continue;
+    }
+
+    if (isWhitespace(char)) {
+      output += char;
+      continue;
+    }
+
+    if (char === ',') {
+      let j = i + 1;
+      while (j < cleaned.length && isWhitespace(cleaned[j])) j += 1;
+      if (cleaned[j] === '}' || cleaned[j] === ']') {
+        continue;
+      }
+      output += char;
+      prevSig = char;
+      continue;
+    }
+
+    if (isIdentifierStart(char) && (prevSig === '' || prevSig === '{' || prevSig === ',')) {
+      let j = i;
+      while (j < cleaned.length && isIdentifierPart(cleaned[j])) j += 1;
+      const name = cleaned.slice(i, j);
+      let k = j;
+      while (k < cleaned.length && isWhitespace(cleaned[k])) k += 1;
+      if (cleaned[k] === ':') {
+        output += `"${name}"`;
+        output += cleaned.slice(j, k);
+        output += ':';
+        prevSig = ':';
+        i = k;
+        continue;
+      }
+    }
+
+    output += char;
+    prevSig = char;
+  }
+
+  return output;
+};
+
+const parseTsLiteral = <T,>(input: string, label: string): T => {
+  try {
+    const normalized = normalizeTsLiteral(input);
+    return JSON.parse(normalized) as T;
+  } catch (error) {
+    throw new Error(`Impossible de lire ${label}. Vérifiez le format du fichier.`);
+  }
+};
+
+const extractExportExpression = (source: string, name: string) => {
+  const regex = new RegExp(`export\\s+const\\s+${name}\\b`);
+  const match = regex.exec(source);
+  if (!match) return null;
+  const assignmentIndex = source.indexOf('=', match.index);
+  if (assignmentIndex === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let stringChar = '';
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  const start = assignmentIndex + 1;
+
+  for (let i = start; i < source.length; i += 1) {
+    const char = source[i];
+    const next = source[i + 1];
+
+    if (inLineComment) {
+      if (char === '\n') inLineComment = false;
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === stringChar) {
+        inString = false;
+        stringChar = '';
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      inLineComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      inString = true;
+      stringChar = char;
+      continue;
+    }
+
+    if (char === '`') {
+      throw new Error('Les templates literals ne sont pas supportés pour l’import.');
+    }
+
+    if (char === '{' || char === '[' || char === '(') depth += 1;
+    if (char === '}' || char === ']' || char === ')') depth -= 1;
+
+    if (char === ';' && depth <= 0) {
+      return source.slice(start, i).trim();
+    }
+  }
+
+  return source.slice(start).trim();
+};
+
 const readStoredState = (key: string): StoredState | null => {
   if (typeof window === 'undefined') return null;
   try {
@@ -294,6 +554,9 @@ export default function App() {
   const [hasHydrated, setHasHydrated] = useState(false);
   const [autosaveAt, setAutosaveAt] = useState<string | null>(null);
   const [backupAt, setBackupAt] = useState<string | null>(null);
+  const [importText, setImportText] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   const previousServiceDetails = useRef<ServiceDetail[]>(serviceDetails);
 
@@ -313,6 +576,12 @@ export default function App() {
     }
     setHasHydrated(true);
   }, []);
+
+  useEffect(() => {
+    setImportText('');
+    setImportError(null);
+    setImportSuccess(null);
+  }, [activeTab]);
 
   useEffect(() => {
     setSiteData((prev) => syncSiteWithServices(prev, serviceDetails));
@@ -425,6 +694,114 @@ export default function App() {
     setSelectedPageMetaIndex(0);
     setSelectedFaqGroup({ type: 'general' });
     setBackupAt(backup.savedAt);
+  };
+
+  const handleImport = () => {
+    setImportError(null);
+    setImportSuccess(null);
+
+    const source = importText.trim();
+    if (!source) {
+      setImportError('Collez le contenu du fichier TypeScript avant d’importer.');
+      return;
+    }
+
+    try {
+      if (activeTab === 'services') {
+        const expression = extractExportExpression(source, 'serviceDetails');
+        if (!expression) throw new Error('Export serviceDetails introuvable.');
+        const parsed = parseTsLiteral<ServiceDetail[]>(expression, 'serviceDetails');
+        setServiceDetails(parsed);
+        setImportSuccess('services.ts importé.');
+      }
+
+      if (activeTab === 'projects') {
+        const expression = extractExportExpression(source, 'projects');
+        if (!expression) throw new Error('Export projects introuvable.');
+        const parsed = parseTsLiteral<ProjectItem[]>(expression, 'projects');
+        setProjects(parsed);
+        setImportSuccess('projects.ts importé.');
+      }
+
+      if (activeTab === 'faqs') {
+        const generalExpr = extractExportExpression(source, 'generalFaqs');
+        const serviceExpr = extractExportExpression(source, 'serviceFaqs');
+        if (!generalExpr || !serviceExpr) throw new Error('Exports generalFaqs/serviceFaqs introuvables.');
+        const parsedGeneral = parseTsLiteral<FaqItem[]>(generalExpr, 'generalFaqs');
+        const parsedService = parseTsLiteral<Record<string, FaqItem[]>>(serviceExpr, 'serviceFaqs');
+        const groups = Object.entries(parsedService).map(([key, items]) => ({ key, items }));
+        setGeneralFaqs(parsedGeneral);
+        setServiceFaqs(groups);
+        setImportSuccess('faqs.ts importé.');
+      }
+
+      if (activeTab === 'site') {
+        const navExpr = extractExportExpression(source, 'navItems');
+        const servicesExpr = extractExportExpression(source, 'services');
+        const zoneExpr = extractExportExpression(source, 'zoneConfig');
+        const siteConfigExpr = extractExportExpression(source, 'siteConfig');
+        const pageMetaExpr = extractExportExpression(source, 'pageMeta');
+        if (!navExpr || !servicesExpr || !zoneExpr || !siteConfigExpr || !pageMetaExpr) {
+          throw new Error('Un ou plusieurs exports sont manquants dans site.ts.');
+        }
+
+        const parsedNav = parseTsLiteral<NavItem[]>(navExpr, 'navItems');
+        const parsedServices = parseTsLiteral<ServiceSummary[]>(servicesExpr, 'services');
+        const parsedZone = parseTsLiteral<SiteData['zoneConfig']>(zoneExpr, 'zoneConfig');
+
+        const siteConfigWithRefs = siteConfigExpr
+          .replace(/\bnav\s*:\s*navItems\b/g, `nav: ${JSON.stringify(parsedNav)}`)
+          .replace(/\bservices\s*:\s*services\b/g, `services: ${JSON.stringify(parsedServices)}`);
+
+        const parsedSiteConfig = parseTsLiteral<SiteConfig & { nav?: NavItem[]; services?: ServiceSummary[] }>(
+          siteConfigWithRefs,
+          'siteConfig'
+        );
+        const { nav: _nav, services: _services, ...siteConfig } = parsedSiteConfig;
+
+        const parsedPageMeta = parseTsLiteral<Record<string, PageMeta>>(pageMetaExpr, 'pageMeta');
+        const pageMetaEntries = Object.entries(parsedPageMeta).map(([key, value]) => ({ key, value }));
+
+        setSiteData({
+          navItems: parsedNav,
+          services: parsedServices,
+          zoneConfig: parsedZone,
+          siteConfig,
+          pageMeta: pageMetaEntries
+        });
+
+        setServiceDetails((prev) => {
+          if (parsedServices.length === 0) return prev;
+          const byId = new Map(prev.map((detail) => [detail.id, detail]));
+          return parsedServices.map((summary, index) => {
+            const existing = byId.get(summary.id) ?? prev[index];
+            if (existing) {
+              return {
+                ...existing,
+                id: summary.id,
+                name: summary.name,
+                path: summary.path,
+                summary: existing.summary || summary.summary
+              };
+            }
+            return {
+              ...createEmptyDetailService(index + 1),
+              id: summary.id,
+              name: summary.name,
+              path: summary.path,
+              summary: summary.summary
+            };
+          });
+        });
+
+        setImportSuccess('site.ts importé.');
+      }
+
+      setImportText('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Import impossible.';
+      setImportError(message);
+    }
   };
 
   const selectedServiceDetail = serviceDetails[selectedDetailIndex] ?? serviceDetails[0];
@@ -1544,6 +1921,29 @@ export default function App() {
               value={outputConfig[activeTab].content}
               readOnly
             />
+          </div>
+          <div className={sectionClasses}>
+            <h3 className="text-lg font-display font-semibold">Importer un fichier TS</h3>
+            <p className="mt-2 text-sm text-ink-700">
+              Collez le contenu complet de {outputConfig[activeTab].title} pour remplacer l’éditeur.
+            </p>
+            <textarea
+              className="mt-4 h-44 w-full rounded-xl border border-sand-200 bg-white p-3 font-mono text-xs text-ink-800 shadow-inset focus:outline-none focus:ring-2 focus:ring-teal-500"
+              value={importText}
+              onChange={(event) => setImportText(event.target.value)}
+              placeholder={`Collez ici ${outputConfig[activeTab].title}...`}
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleImport}
+                className="rounded-full border border-ink-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-ink-900 hover:bg-ink-900 hover:text-white transition"
+              >
+                Importer
+              </button>
+              {importSuccess && <span className="text-xs text-teal-600">{importSuccess}</span>}
+              {importError && <span className="text-xs text-clay-600">{importError}</span>}
+            </div>
           </div>
           <div className={sectionClasses}>
             <h3 className="text-lg font-display font-semibold">Sauvegarde locale</h3>
