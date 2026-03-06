@@ -28,6 +28,21 @@ type RawValue = {
   __raw: string;
 };
 
+type StoredState = {
+  version: 1;
+  savedAt: string;
+  data: {
+    serviceDetails: ServiceDetail[];
+    projects: ProjectItem[];
+    generalFaqs: FaqItem[];
+    serviceFaqs: ServiceFaqGroup[];
+    siteData: SiteData;
+  };
+};
+
+const AUTOSAVE_KEY = 'neochaleur-editor-autosave-v1';
+const BACKUP_KEY = 'neochaleur-editor-backup-v1';
+
 const raw = (code: string): RawValue => ({ __raw: code });
 
 const isRaw = (value: unknown): value is RawValue =>
@@ -64,6 +79,29 @@ const toTs = (value: unknown, indent = 0): string => {
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (value === null) return 'null';
   return 'undefined';
+};
+
+const readStoredState = (key: string): StoredState | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const rawValue = window.localStorage.getItem(key);
+    if (!rawValue) return null;
+    const parsed = JSON.parse(rawValue) as StoredState;
+    if (parsed.version !== 1 || !parsed.data) return null;
+    return parsed;
+  } catch (error) {
+    console.warn('Impossible de lire la sauvegarde locale.', error);
+    return null;
+  }
+};
+
+const writeStoredState = (key: string, data: StoredState) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(data));
+  } catch (error) {
+    console.warn('Impossible d’écrire la sauvegarde locale.', error);
+  }
 };
 
 const buildServicesTs = (serviceDetails: ServiceDetail[]) => {
@@ -253,8 +291,28 @@ export default function App() {
   const [selectedSiteServiceIndex, setSelectedSiteServiceIndex] = useState(0);
   const [selectedPageMetaIndex, setSelectedPageMetaIndex] = useState(0);
   const [copiedTab, setCopiedTab] = useState<TabId | null>(null);
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const [autosaveAt, setAutosaveAt] = useState<string | null>(null);
+  const [backupAt, setBackupAt] = useState<string | null>(null);
 
   const previousServiceDetails = useRef<ServiceDetail[]>(serviceDetails);
+
+  useEffect(() => {
+    const autosave = readStoredState(AUTOSAVE_KEY);
+    if (autosave) {
+      setServiceDetails(autosave.data.serviceDetails);
+      setProjects(autosave.data.projects);
+      setGeneralFaqs(autosave.data.generalFaqs);
+      setServiceFaqs(autosave.data.serviceFaqs);
+      setSiteData(autosave.data.siteData);
+      setAutosaveAt(autosave.savedAt);
+    }
+    const backup = readStoredState(BACKUP_KEY);
+    if (backup) {
+      setBackupAt(backup.savedAt);
+    }
+    setHasHydrated(true);
+  }, []);
 
   useEffect(() => {
     setSiteData((prev) => syncSiteWithServices(prev, serviceDetails));
@@ -274,6 +332,17 @@ export default function App() {
       return { type: 'general' };
     });
   }, [serviceDetails, selectedDetailIndex]);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+    const payload: StoredState = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      data: { serviceDetails, projects, generalFaqs, serviceFaqs, siteData }
+    };
+    writeStoredState(AUTOSAVE_KEY, payload);
+    setAutosaveAt(payload.savedAt);
+  }, [serviceDetails, projects, generalFaqs, serviceFaqs, siteData, hasHydrated]);
 
   useEffect(() => {
     const prev = previousServiceDetails.current;
@@ -330,6 +399,32 @@ export default function App() {
     await navigator.clipboard.writeText(outputConfig[activeTab].content);
     setCopiedTab(activeTab);
     window.setTimeout(() => setCopiedTab(null), 2000);
+  };
+
+  const handleLocalSave = () => {
+    const payload: StoredState = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      data: { serviceDetails, projects, generalFaqs, serviceFaqs, siteData }
+    };
+    writeStoredState(BACKUP_KEY, payload);
+    setBackupAt(payload.savedAt);
+  };
+
+  const handleRestore = () => {
+    const backup = readStoredState(BACKUP_KEY);
+    if (!backup) return;
+    setServiceDetails(backup.data.serviceDetails);
+    setProjects(backup.data.projects);
+    setGeneralFaqs(backup.data.generalFaqs);
+    setServiceFaqs(backup.data.serviceFaqs);
+    setSiteData(backup.data.siteData);
+    setSelectedDetailIndex(0);
+    setSelectedProjectIndex(0);
+    setSelectedSiteServiceIndex(0);
+    setSelectedPageMetaIndex(0);
+    setSelectedFaqGroup({ type: 'general' });
+    setBackupAt(backup.savedAt);
   };
 
   const selectedServiceDetail = serviceDetails[selectedDetailIndex] ?? serviceDetails[0];
@@ -1449,6 +1544,32 @@ export default function App() {
               value={outputConfig[activeTab].content}
               readOnly
             />
+          </div>
+          <div className={sectionClasses}>
+            <h3 className="text-lg font-display font-semibold">Sauvegarde locale</h3>
+            <p className="mt-2 text-sm text-ink-700">
+              Les modifications sont autosauvegardées dans le navigateur. Vous pouvez aussi garder une copie manuelle.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleLocalSave}
+                className="rounded-full border border-ink-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-ink-900 hover:bg-ink-900 hover:text-white transition"
+              >
+                Sauvegarder
+              </button>
+              <button
+                type="button"
+                onClick={handleRestore}
+                className="rounded-full border border-clay-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-clay-600 hover:bg-clay-600 hover:text-white transition"
+              >
+                Restaurer
+              </button>
+            </div>
+            <div className="mt-3 text-xs text-ink-600 space-y-1">
+              <p>Autosave: {autosaveAt ? new Date(autosaveAt).toLocaleString() : 'Aucune'}</p>
+              <p>Backup manuel: {backupAt ? new Date(backupAt).toLocaleString() : 'Aucune'}</p>
+            </div>
           </div>
           <div className={sectionClasses}>
             <h3 className="text-lg font-display font-semibold">Conseils rapides</h3>
