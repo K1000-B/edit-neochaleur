@@ -805,13 +805,13 @@ export default function App() {
 
       <header className="relative z-10 max-w-6xl mx-auto px-6 pt-12 pb-6">
         <div className="space-y-4">
-          <p className="text-sm uppercase tracking-[0.3em] text-teal-600 font-semibold">NeoChaleur Studio</p>
+          <p className="text-sm uppercase tracking-[0.3em] text-teal-600 font-semibold">NeoChaleur web editor</p>
           <h1 className="text-4xl md:text-5xl font-display font-semibold leading-tight">
-            Éditeur de contenus, exports TS prêts à l’emploi
+            Éditeur du contenu de neochaleur, exports TS prêts à l’emploi
           </h1>
           <p className="max-w-2xl text-lg text-ink-700">
-            Modifiez vos contenus (services, projets, FAQ, configuration du site) via une interface claire, puis
-            copiez directement les fichiers TypeScript dans votre projet.
+            Modifiez les contenus (services, projets, FAQ, configuration du site) via une interface claire, puis
+            copiez directement les fichiers TypeScript dans le projet.
           </p>
         </div>
         <div className="mt-8 flex flex-wrap gap-3">
